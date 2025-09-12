@@ -19,10 +19,10 @@ var _ LogRenderer = &LogRendererMock{}
 //
 //		// make and configure a mocked LogRenderer
 //		mockedLogRenderer := &LogRendererMock{
-//			FollowFunc: func(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.ColorScheme) error {
+//			FollowFunc: func(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.IOStreams) error {
 //				panic("mock out the Follow method")
 //			},
-//			RenderFunc: func(logs []byte, w io.Writer, cs *iostreams.ColorScheme) (bool, error) {
+//			RenderFunc: func(logs []byte, w io.Writer, cs *iostreams.IOStreams) (bool, error) {
 //				panic("mock out the Render method")
 //			},
 //		}
@@ -33,10 +33,10 @@ var _ LogRenderer = &LogRendererMock{}
 //	}
 type LogRendererMock struct {
 	// FollowFunc mocks the Follow method.
-	FollowFunc func(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.ColorScheme) error
+	FollowFunc func(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.IOStreams) error
 
 	// RenderFunc mocks the Render method.
-	RenderFunc func(logs []byte, w io.Writer, cs *iostreams.ColorScheme) (bool, error)
+	RenderFunc func(logs []byte, w io.Writer, cs *iostreams.IOStreams) (bool, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -47,7 +47,7 @@ type LogRendererMock struct {
 			// W is the w argument value.
 			W io.Writer
 			// Cs is the cs argument value.
-			Cs *iostreams.ColorScheme
+			Cs *iostreams.IOStreams
 		}
 		// Render holds details about calls to the Render method.
 		Render []struct {
@@ -56,7 +56,7 @@ type LogRendererMock struct {
 			// W is the w argument value.
 			W io.Writer
 			// Cs is the cs argument value.
-			Cs *iostreams.ColorScheme
+			Cs *iostreams.IOStreams
 		}
 	}
 	lockFollow sync.RWMutex
@@ -64,14 +64,14 @@ type LogRendererMock struct {
 }
 
 // Follow calls FollowFunc.
-func (mock *LogRendererMock) Follow(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.ColorScheme) error {
+func (mock *LogRendererMock) Follow(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.IOStreams) error {
 	if mock.FollowFunc == nil {
 		panic("LogRendererMock.FollowFunc: method is nil but LogRenderer.Follow was just called")
 	}
 	callInfo := struct {
 		Fetcher func() ([]byte, error)
 		W       io.Writer
-		Cs      *iostreams.ColorScheme
+		Cs      *iostreams.IOStreams
 	}{
 		Fetcher: fetcher,
 		W:       w,
@@ -90,12 +90,12 @@ func (mock *LogRendererMock) Follow(fetcher func() ([]byte, error), w io.Writer,
 func (mock *LogRendererMock) FollowCalls() []struct {
 	Fetcher func() ([]byte, error)
 	W       io.Writer
-	Cs      *iostreams.ColorScheme
+	Cs      *iostreams.IOStreams
 } {
 	var calls []struct {
 		Fetcher func() ([]byte, error)
 		W       io.Writer
-		Cs      *iostreams.ColorScheme
+		Cs      *iostreams.IOStreams
 	}
 	mock.lockFollow.RLock()
 	calls = mock.calls.Follow
@@ -104,14 +104,14 @@ func (mock *LogRendererMock) FollowCalls() []struct {
 }
 
 // Render calls RenderFunc.
-func (mock *LogRendererMock) Render(logs []byte, w io.Writer, cs *iostreams.ColorScheme) (bool, error) {
+func (mock *LogRendererMock) Render(logs []byte, w io.Writer, cs *iostreams.IOStreams) (bool, error) {
 	if mock.RenderFunc == nil {
 		panic("LogRendererMock.RenderFunc: method is nil but LogRenderer.Render was just called")
 	}
 	callInfo := struct {
 		Logs []byte
 		W    io.Writer
-		Cs   *iostreams.ColorScheme
+		Cs   *iostreams.IOStreams
 	}{
 		Logs: logs,
 		W:    w,
@@ -130,12 +130,12 @@ func (mock *LogRendererMock) Render(logs []byte, w io.Writer, cs *iostreams.Colo
 func (mock *LogRendererMock) RenderCalls() []struct {
 	Logs []byte
 	W    io.Writer
-	Cs   *iostreams.ColorScheme
+	Cs   *iostreams.IOStreams
 } {
 	var calls []struct {
 		Logs []byte
 		W    io.Writer
-		Cs   *iostreams.ColorScheme
+		Cs   *iostreams.IOStreams
 	}
 	mock.lockRender.RLock()
 	calls = mock.calls.Render

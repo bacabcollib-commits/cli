@@ -323,7 +323,6 @@ func printSession(opts *ViewOptions, session *capi.Session) {
 func printLogs(opts *ViewOptions, capiClient capi.CapiClient, sessionID string) error {
 	ctx := context.Background()
 
-	cs := opts.IO.ColorScheme()
 	renderer := opts.LogRenderer()
 
 	if opts.Follow {
@@ -341,7 +340,7 @@ func printLogs(opts *ViewOptions, capiClient capi.CapiClient, sessionID string) 
 		}
 
 		fmt.Fprintln(opts.IO.Out, "")
-		return renderer.Follow(fetcher, opts.IO.Out, cs)
+		return renderer.Follow(fetcher, opts.IO.Out, opts.IO)
 	}
 
 	raw, err := capiClient.GetSessionLogs(ctx, sessionID)
@@ -350,6 +349,6 @@ func printLogs(opts *ViewOptions, capiClient capi.CapiClient, sessionID string) 
 	}
 
 	fmt.Fprintln(opts.IO.Out, "")
-	_, err = renderer.Render(raw, opts.IO.Out, cs)
+	_, err = renderer.Render(raw, opts.IO.Out, opts.IO)
 	return err
 }

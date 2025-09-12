@@ -884,7 +884,7 @@ func Test_viewRun(t *testing.T) {
 				}
 			},
 			logRendererStubs: func(t *testing.T, m *shared.LogRendererMock) {
-				m.RenderFunc = func(raw []byte, w io.Writer, cs *iostreams.ColorScheme) (bool, error) {
+				m.RenderFunc = func(raw []byte, w io.Writer, ios *iostreams.IOStreams) (bool, error) {
 					w.Write([]byte("(rendered:) " + string(raw) + "\n"))
 					return false, nil
 				}
@@ -935,7 +935,7 @@ func Test_viewRun(t *testing.T) {
 				}
 			},
 			logRendererStubs: func(t *testing.T, m *shared.LogRendererMock) {
-				m.FollowFunc = func(fetcher func() ([]byte, error), w io.Writer, cs *iostreams.ColorScheme) error {
+				m.FollowFunc = func(fetcher func() ([]byte, error), w io.Writer, ios *iostreams.IOStreams) error {
 					raw, err := fetcher()
 					require.NoError(t, err)
 					w.Write([]byte("(rendered:) " + string(raw) + "\n"))

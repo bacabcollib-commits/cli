@@ -49,7 +49,7 @@ func TestFollow(t *testing.T) {
 
 			ios, _, stdout, _ := iostreams.Test()
 
-			err = NewLogRenderer().Follow(fetcher, stdout, ios.ColorScheme())
+			err = NewLogRenderer().Follow(fetcher, stdout, ios)
 			require.NoError(t, err)
 
 			want, err := os.ReadFile(tt.want)
