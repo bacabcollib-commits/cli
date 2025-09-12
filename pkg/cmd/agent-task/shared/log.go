@@ -153,7 +153,7 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 					}
 				}
 
-			// GUI does not support these.
+			// GUI does not currently support these.
 			// case "write_bash":
 			// 	if v := unmarshal[writeBashToolArgs](args); v != nil {
 			// 		renderToolCallTitle("Send input to Bash session " + v.SessionID)
@@ -200,8 +200,22 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 					return false, fmt.Errorf("failed to parse 'report_progress' tool call arguments: %w", err)
 				}
-				// NOTE: omit the delta.content to reduce noise
+
 				renderToolCall(w, cs, "Progress update", cs.Bold(args.CommitMessage))
+				if args.PrDescription != "" {
+					if err := renderRawMarkdown(args.PrDescription, w, io); err != nil {
+						return false, fmt.Errorf("failed to render PR description: %w", err)
+					}
+				}
+
+				// TODO: KW I wasn't able to get this to populate.
+				if choice.Delta.Content != "" {
+					// Try to treat this as JSON
+					if err := renderContentAsJSONMarkdown(choice.Delta.Content, w, io); err != nil {
+						return false, fmt.Errorf("failed to render progress update content: %w", err)
+					}
+				}
+
 			case "create":
 				args := createToolArgs{}
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
@@ -228,21 +242,26 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 				renderGenericToolCall(w, cs, name)
 
 				// If it's JSON, treat it as such, otherwise we skip whatever the content is.
-				var contentAsJSON any
-				if err := json.Unmarshal([]byte(choice.Delta.Content), &contentAsJSON); err == nil {
-					marshaled, err := json.MarshalIndent(contentAsJSON, "", "  ")
-					if err == nil {
-						choice.Delta.Content = string(marshaled)
-					}
-
-					if err := renderFileContentAsMarkdown("output.json", string(marshaled), w, io); err != nil {
-						return false, fmt.Errorf("failed to render output.json: %w", err)
-					}
-				}
+				_ = renderContentAsJSONMarkdown(choice.Delta.Content, w, io)
 			}
 		}
 	}
 	return stop, nil
+}
+
+func renderContentAsJSONMarkdown(content string, w io.Writer, io *iostreams.IOStreams) error {
+	var contentAsJSON any
+	if err := json.Unmarshal([]byte(content), &contentAsJSON); err == nil {
+		marshaled, err := json.MarshalIndent(contentAsJSON, "", "  ")
+		if err == nil {
+			content = string(marshaled)
+		}
+
+		if err := renderFileContentAsMarkdown("output.json", string(marshaled), w, io); err != nil {
+			return fmt.Errorf("failed to render JSON: %w", err)
+		}
+	}
+	return nil
 }
 
 func renderRawMarkdown(md string, w io.Writer, io *iostreams.IOStreams) error {
