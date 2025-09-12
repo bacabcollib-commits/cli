@@ -122,7 +122,7 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 			switch name {
 			case "run_setup":
 				if v := unmarshal[runSetupToolArgs](args); v != nil {
-					renderToolCall(w, cs, "Start "+v.Name+" MCP server", "")
+					renderToolCall(w, cs, v.Name, "")
 					continue
 				}
 			case "view":
@@ -132,8 +132,10 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 				}
 				fmt.Fprintf(w, "View %s\n", cs.Bold(relativePath(args.Path)))
 
+				content := stripDiffFormat(choice.Delta.Content)
+
 				// TODO: Strip the diff formatting from this, but for now render as it is.
-				if err := renderFileContentAsMarkdown("output.diff", choice.Delta.Content, w, io); err != nil {
+				if err := renderFileContentAsMarkdown(args.Path, content, w, io); err != nil {
 					return false, fmt.Errorf("failed to render viewed file content: %w", err)
 				}
 			case "bash":
@@ -211,7 +213,7 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 				// TODO: KW I wasn't able to get this to populate.
 				if choice.Delta.Content != "" {
 					// Try to treat this as JSON
-					if err := renderContentAsJSONMarkdown(choice.Delta.Content, w, io); err != nil {
+					if err := renderContentAsJSONMarkdown("", choice.Delta.Content, w, io); err != nil {
 						return false, fmt.Errorf("failed to render progress update content: %w", err)
 					}
 				}
@@ -242,19 +244,29 @@ func renderLogEntry(entry chatCompletionChunkEntry, w io.Writer, io *iostreams.I
 				renderGenericToolCall(w, cs, name)
 
 				// If it's JSON, treat it as such, otherwise we skip whatever the content is.
-				_ = renderContentAsJSONMarkdown(choice.Delta.Content, w, io)
+				_ = renderContentAsJSONMarkdown("Output:", choice.Delta.Content, w, io)
+
+				// The entirety of the args can be treated as "input" to the tool call.
+				// We try to render it as JSON, but if that fails, just skip it.
+				_ = renderContentAsJSONMarkdown("Input:", args, w, io)
 			}
 		}
 	}
 	return stop, nil
 }
 
-func renderContentAsJSONMarkdown(content string, w io.Writer, io *iostreams.IOStreams) error {
+func renderContentAsJSONMarkdown(label, content string, w io.Writer, io *iostreams.IOStreams) error {
 	var contentAsJSON any
 	if err := json.Unmarshal([]byte(content), &contentAsJSON); err == nil {
 		marshaled, err := json.MarshalIndent(contentAsJSON, "", "  ")
-		if err == nil {
-			content = string(marshaled)
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+
+		if label != "" {
+			if err := renderRawMarkdown(label, w, io); err != nil {
+				return fmt.Errorf("failed to render label: %w", err)
+			}
 		}
 
 		if err := renderFileContentAsMarkdown("output.json", string(marshaled), w, io); err != nil {
@@ -297,15 +309,46 @@ func renderMarkdownWithPadding(md string, w io.Writer, io *iostreams.IOStreams, 
 	return nil
 }
 
+func stripDiffFormat(diff string) string {
+	lines := strings.Split(diff, "\n")
+
+	// Find where the hunk header ends.
+	hunkEndIndex := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "@@") {
+			hunkEndIndex = i
+			break
+		}
+	}
+
+	// If we found the hunk header end, we strip everything before it.
+	if hunkEndIndex != -1 {
+		lines = lines[hunkEndIndex+1:]
+	} else {
+		// This isn't a diff, so we defensively just return the original string.
+		return diff
+	}
+
+	// Now we strip the leading + and - from lines.
+	var stripped []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
+			stripped = append(stripped, line[1:])
+		} else {
+			stripped = append(stripped, line)
+		}
+	}
+	return strings.Join(stripped, "\n")
+}
+
 // renderFileContentAsMarkdown renders the given content as markdown
 // based on the file extension of the path.
 func renderFileContentAsMarkdown(path, content string, w io.Writer, io *iostreams.IOStreams) error {
 	parts := strings.Split(path, ".")
 	lang := parts[len(parts)-1]
-	content = strings.TrimSpace(content)
 
 	if lang == "md" {
-		return renderMarkdownWithPadding(content, w, io, nil)
+		return renderRawMarkdown(content, w, io)
 	}
 
 	md := fmt.Sprintf("```%s\n%s\n```", lang, content)
@@ -358,9 +401,58 @@ func renderToolCall(w io.Writer, cs *iostreams.ColorScheme, descriptor, title st
 
 func renderGenericToolCall(w io.Writer, cs *iostreams.ColorScheme, name string) {
 	genericToolCallTitles := map[string]string{
-		"codeql_checker":                       "Run CodeQL analysis",
-		"github-mcp-server-list_issues":        "List issues on GitHub",
-		"github-mcp-server-list_pull_requests": "List pull requests on GitHub",
+		// Custom tools, the GitHub UI doesn't currently have these.
+		"codeql_checker": "Run CodeQL analysis",
+
+		// Playwright tools.
+		"playwright-browser_navigate":         "Navigate Playwright web browser to a URL",
+		"playwright-browser_navigate_back":    "Navigate back in Playwright web browser",
+		"playwright-browser_navigate_forward": "Navigate forward in Playwright web browser",
+		"playwright-browser_click":            "Click element in Playwright web browser",
+		"playwright-browser_take_screenshot":  "Take screenshot of Playwright web browser",
+		"playwright-browser_type":             "Type in Playwright web browser",
+		"playwright-browser_wait_for":         "Wait for text to appear/disappear in Playwright web browser",
+		"playwright-browser_evaluate":         "Run JavaScript in Playwright web browser",
+		"playwright-browser_snapshot":         "Take snapshot of page in Playwright web browser",
+		"playwright-browser_resize":           "Resize Playwright web browser window",
+		"playwright-browser_close":            "Close Playwright web browser",
+		"playwright-browser_press_key":        "Press key in Playwright web browser",
+		"playwright-browser_select_option":    "Select option in Playwright web browser",
+		"playwright-browser_handle_dialog":    "Interact with dialog in Playwright web browser",
+		"playwright-browser_console_messages": "Get console messages from Playwright web browser",
+		"playwright-browser_drag":             "Drag mouse between elements in Playwright web browser",
+		"playwright-browser_file_upload":      "Upload file in Playwright web browser",
+		"playwright-browser_hover":            "Hover mouse over element in Playwright web browser",
+		"playwright-browser_network_requests": "Get network requests from Playwright web browser",
+
+		// GitHub MCP server common tools
+		"github-mcp-server-get_file_contents":              "Get file contents from GitHub",
+		"github-mcp-server-get_pull_request":               "Get pull request from GitHub",
+		"github-mcp-server-get_issue":                      "Get issue from GitHub",
+		"github-mcp-server-get_pull_request_files":         "Get pull request changed files from GitHub",
+		"github-mcp-server-list_pull_requests":             "List pull requests on GitHub",
+		"github-mcp-server-list_branches":                  "List branches on GitHub",
+		"github-mcp-server-get_pull_request_diff":          "Get pull request diff from GitHub",
+		"github-mcp-server-get_pull_request_comments":      "Get pull request comments from GitHub",
+		"github-mcp-server-get_commit":                     "Get commit from GitHub",
+		"github-mcp-server-search_repositories":            "Search repositories on GitHub",
+		"github-mcp-server-search_code":                    "Search code on GitHub",
+		"github-mcp-server-get_issue_comments":             "Get issue comments from GitHub",
+		"github-mcp-server-list_issues":                    "List issues on GitHub",
+		"github-mcp-server-search_pull_requests":           "Search pull requests on GitHub",
+		"github-mcp-server-list_commits":                   "List commits on GitHub",
+		"github-mcp-server-get_pull_request_status":        "Get pull request status from GitHub",
+		"github-mcp-server-search_issues":                  "Search issues on GitHub",
+		"github-mcp-server-get_pull_request_reviews":       "Get pull request reviews from GitHub",
+		"github-mcp-server-download_workflow_run_artifact": "Download GitHub Actions workflow run artifact",
+		"github-mcp-server-get_job_logs":                   "Get GitHub Actions job logs",
+		"github-mcp-server-get_workflow_run":               "Get GitHub Actions workflow run",
+		"github-mcp-server-get_workflow_run_logs":          "Get GitHub Actions workflow run logs",
+		"github-mcp-server-get_workflow_run_usage":         "Get GitHub Actions workflow usage",
+		"github-mcp-server-list_workflow_jobs":             "List GitHub Actions workflow jobs",
+		"github-mcp-server-list_workflow_run_artifacts":    "List GitHub Actions workflow run artifacts",
+		"github-mcp-server-list_workflow_runs":             "List GitHub Actions workflow runs",
+		"github-mcp-server-list_workflows":                 "List GitHub Actions workflows",
 	}
 
 	descriptor, ok := genericToolCallTitles[name]
